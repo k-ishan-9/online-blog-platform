@@ -1,0 +1,23 @@
+{
+    "author": "Vitesh Reddy",
+    "name": "blogify-backend",
+    "version": "1.0.0",
+    "type": "module",
+    "scripts": {
+        "start": "node backend/server.js",
+        "dev": "nodemon server.js",
+        "build": "npm i && npm i --prefix frontend && npm run build --prefix frontend"
+    },
+    "dependencies": {
+        "bcrypt": "^6.0.0",
+        "cookie-parser": "^1.4.7",
+        "cors": "^2.8.5",
+        "dotenv": "^16.5.0",
+        "express": "^5.1.0",
+        "jsonwebtoken": "^9.0.2",
+        "mongoose": "^8.0.3"
+    },
+    "devDependencies": {
+        "nodemon": "^3.0.2"
+    }
+}
