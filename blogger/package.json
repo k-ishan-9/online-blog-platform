@@ -1,6 +1,6 @@
 {
     "name": "blogify-backend",
-    "version": "1.1.0",
+    "version": "2.0.0",
     "description": "Blogify: a MERN blog editor with debounced auto-save, JWT auth and role-based access control",
     "author": "Kishan Achanta",
     "repository": {
@@ -11,6 +11,7 @@
     "scripts": {
         "start": "node backend/server.js",
         "dev": "nodemon backend/server.js",
+        "test": "node --test --test-reporter=spec --test-concurrency=1 \"backend/tests/**/*.test.js\"",
         "build": "npm i && npm i --prefix frontend && npm run build --prefix frontend",
         "make-admin": "node backend/scripts/makeAdmin.js"
     },
@@ -20,10 +21,19 @@
         "cors": "^2.8.5",
         "dotenv": "^16.5.0",
         "express": "^5.1.0",
+        "express-rate-limit": "^8.7.3",
+        "helmet": "^8.3.0",
         "jsonwebtoken": "^9.0.2",
-        "mongoose": "^8.0.3"
+        "mongoose": "^8.0.3",
+        "morgan": "^1.12.1",
+        "sanitize-html": "^2.18.1",
+        "zod": "^4.6.7"
     },
     "devDependencies": {
-        "nodemon": "^3.0.2"
+        "nodemon": "^3.0.2",
+        "supertest": "^7.3.1"
+    },
+    "engines": {
+        "node": ">=20"
     }
 }

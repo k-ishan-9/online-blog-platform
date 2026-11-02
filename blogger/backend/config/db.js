@@ -1,15 +1,12 @@
 import mongoose from 'mongoose';
-import { config } from 'dotenv';
 
-config();
-
-const connectDB = async () => {
+const connectDB = async (uri = process.env.MONGO_URI) => {
   try {
-    await mongoose.connect(process.env.MONGO_URI);
+    await mongoose.connect(uri);
     console.log('MongoDB connected');
   } catch (error) {
-    console.error('MongoDB connection error:', error);
-    process.exit(1);
+    console.error('MongoDB connection error:', error.message);
+    process.exit(1); // fail fast: an API without its database is worse than no API
   }
 };
 

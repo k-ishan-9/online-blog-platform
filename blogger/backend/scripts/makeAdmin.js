@@ -1,12 +1,12 @@
 // Promote an existing user to admin.
 // Usage (from the blogger/ folder): npm run make-admin -- someone@example.com
+// Deliberately a command-line script, not an API: no HTTP request can ever grant admin rights.
+import 'dotenv/config';
 import mongoose from 'mongoose';
-import { config } from 'dotenv';
 import User from '../models/User.js';
+import AuditLog from '../models/AuditLog.js';
 
-config();
-
-const email = process.argv[2];
+const email = process.argv[2]?.trim().toLowerCase();
 if (!email) {
   console.error('Usage: npm run make-admin -- <email>');
   process.exit(1);
@@ -14,6 +14,9 @@ if (!email) {
 
 await mongoose.connect(process.env.MONGO_URI);
 const user = await User.findOneAndUpdate({ email }, { role: 'admin' }, { new: true });
+if (user) {
+  await AuditLog.create({ action: 'user.role_change', actorEmail: 'command line', target: email, details: { role: 'admin' } });
+}
 await mongoose.disconnect();
 
 if (!user) {

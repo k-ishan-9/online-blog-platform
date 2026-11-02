@@ -1,105 +1,83 @@
-# Blogify Backend API Documentation
+# Blogify Backend API
 
-This document describes the API endpoints, middleware and models used in the Blogify backend.
+All routes are under `/api` and return JSON. Authentication uses a JWT stored in an httpOnly cookie named `token`, set by `POST /api/auth/login`.
 
-All routes are under `/api`. Authentication uses a JWT stored in an httpOnly cookie named `token`, set by `POST /api/auth/login`.
+**Errors** always look like `{ "message": "..." }`. Validation errors add `"errors": [{ "field", "message" }]`.
+
+| Status | Meaning |
+| --- | --- |
+| 400 | Invalid input (Zod or Mongoose validation, malformed id or cursor) |
+| 401 | Not logged in, or the session expired |
+| 403 | Logged in but not allowed (wrong role), or a cross-site request |
+| 404 | Not found, or not yours |
+| 409 | Conflict: email already registered, or the post changed during your save |
+| 413 | Request body over 2 MB |
+| 429 | Too many requests (rate limit) |
 
 ---
 
 ## Models
 
-### User
+**User**: `name`, `email` (unique, lowercase), `password` (bcrypt hash, never returned), `role` (`author` or `admin`), timestamps.
 
-- **email**: String, required, unique
-- **password**: String, required (bcrypt hash)
-- **role**: `'author'` (default) or `'admin'`
+**Blog**: `title` (max 150), `content` (sanitized HTML), `plainText` (search only, never returned), `excerpt`, `tags` (up to 5, lowercase), `status` (`draft` or `published`), `author` (ref User), `slug` (set at first publish, never changed), `publishedAt`, `readingTime` (minutes), `views`, `created_at`, `updated_at`. Optimistic concurrency is on.
 
-### Blog
+Indexes: `{ author, updated_at }` for the dashboard, `{ status, publishedAt, _id }` for the feed, and a weighted text index on title (10), tags (5) and plainText (1).
 
-- **title**: String, required
-- **content**: String (HTML from the rich-text editor), required
-- **tags**: String (comma-separated)
-- **status**: `'draft'` or `'published'`
-- **author**: ObjectId referencing `User`, required
-- **created_at**, **updated_at**: Date
-
-Index: `{ author: 1, updated_at: -1 }` serves "my posts, newest first".
+**AuditLog**: `action`, `actor`, `actorEmail`, `target`, `details`, `ip`, `at`. Append-only.
 
 ---
 
-## Authentication Routes (`/api/auth`)
+## Health
 
-### POST `/signup`
-- **Body:** `{ email, password }`
-- **Response:** `201` on success, `400` if the email is already registered.
+`GET /api/health` returns `{ status, database: "up" | "down", uptimeSeconds }`.
 
-### POST `/login`
-- **Body:** `{ email, password }`
-- **Response:** sets the `token` cookie (payload `{ id, email, role }`, signed with `JWT_SECRET`).
+## Auth: `/api/auth`
 
-### GET `/me`
-- **Auth:** required.
-- **Response:** `{ user: { id, email, role } }`, or `401`.
+| Method | Path | Body | Notes |
+| --- | --- | --- | --- |
+| POST | `/signup` | `{ name?, email, password }` | 201. Password 8–72 characters. 409 if the email exists. Rate limited. |
+| POST | `/login` | `{ email, password }` | Sets the cookie. 401 "Invalid email or password" for either mistake. Rate limited. |
+| GET | `/me` | none | `{ user: { id, email, name, role } }` or `{ user: null }` |
+| POST | `/logout` | none | Clears the cookie |
 
-### POST `/logout`
-- **Response:** clears the `token` cookie.
+## Public: `/api/public` (no login)
 
----
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/blogs?q=&tag=&cursor=&limit=` | Published posts, newest first. `q`: full-text search. `limit`: 1–50, default 10. Returns `{ items, nextCursor }`, where `nextCursor` is null on the last page. Authors appear by name only. |
+| GET | `/blogs/:slug` | One published post. Increments `views` atomically. 404 for drafts and unknown slugs. |
+| GET | `/tags` | Top 12 tags on published posts: `[{ tag, count }]` |
 
-## Blog Routes (`/api/blogs`)
+## Author: `/api/blogs` (login required, your posts only)
 
-Every blog route requires authentication (`401` without a valid token). Author routes only ever touch the logged-in user's own posts. Another author's post returns `404`. A malformed id returns `400`.
+| Method | Path | Body | Notes |
+| --- | --- | --- | --- |
+| GET | `/` | none | Your posts, newest first, without `content` |
+| GET | `/stats` | none | `{ drafts, published, totalViews }` |
+| POST | `/save-draft` | `{ _id?, title, content, tags? }` | Creates or updates a draft. On a published post, unpublishes it (the slug is kept). |
+| POST | `/publish` | `{ _id?, title, content, tags? }` | Publishes or updates a live post. First publish sets `slug` and `publishedAt`. 400 if the content is empty. |
+| GET | `/:id` | none | 404 if it isn't yours |
+| DELETE | `/:id` | none | 404 if it isn't yours |
 
-### GET `/`
-- **Response:** your posts, newest first.
+`tags` accepts `"react, #Web Dev"` or `["react"]` and is normalised to `["react", "web-dev"]`.
 
-### POST `/save-draft`
-- **Body:** `{ _id?, title, content, tags }`
-- **Response:** the saved draft. Without `_id` a new post is created and owned by you. With `_id` your post is updated, or `404` if it isn't yours.
+## Admin: `/api/admin` (admin role required)
 
-### POST `/publish`
-- **Body:** `{ _id?, title, content, tags }`
-- **Response:** the published post (same ownership rules as `save-draft`).
-
-### GET `/:id`
-- **Response:** one of your posts, or `404`.
-
-### DELETE `/:id`
-- **Response:** `{ message: 'Blog deleted' }`, or `404` if it isn't yours.
-
-### Admin only
-
-These return `403` for any role other than `admin`.
-
-#### GET `/admin/all`
-- **Response:** every post, newest first, with `author` populated as `{ _id, email, role }`.
-
-#### DELETE `/admin/:id`
-- **Response:** deletes any post (moderation), or `404`.
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/blogs` | Every post with `author: { email, name, role }` |
+| DELETE | `/blogs/:id` | Deletes any post; writes `admin.blog_delete` to the audit log |
+| GET | `/stats` | `{ users: { total, admins }, posts: { drafts, published }, totalViews, publishedThisWeek, topAuthors }` |
+| GET | `/audit?limit=` | Latest audit events (default 50, max 200) |
 
 ---
 
-## Middleware
+## Middleware order
 
-### `authMiddleware`
-- Reads the `token` cookie and verifies it with `JWT_SECRET`.
-- Sets `req.user = { id, email, role }`.
-- Returns `401` if the token is missing or invalid.
-
-### `requireRole(...roles)`
-- Use after `authMiddleware`.
-- Returns `403` unless `req.user.role` is one of `roles`.
-
----
+`helmet` → `morgan` → `cors` → `express.json (2 MB)` → `cookie-parser` → rate limits → same-origin check → routers (`authMiddleware` → `requireRole` → `validate`) → 404 → error handler.
 
 ## Scripts
 
-- `npm run make-admin -- <email>`: promotes an existing user to `admin`. The user must log in again to get the new role in their token.
-
----
-
-## Services
-
-- **Database:** MongoDB via Mongoose.
-- **Authentication:** JWT in httpOnly cookies.
-- **Password hashing:** bcrypt (10 salt rounds).
+- `npm run make-admin -- <email>`: promotes a user to admin and records it in the audit log
+- `npm test`: runs the API test suite against `MONGO_URI_TEST`

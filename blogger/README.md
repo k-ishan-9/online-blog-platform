@@ -1,48 +1,73 @@
 # Blogify
 
-Blogify is a full-stack, multi-author blog editor built with the MERN stack and styled with Tailwind CSS. Authors write, auto-save, publish, edit and delete their own posts. Admins can moderate every post. Access is secured with JWT authentication and role-based authorization.
+[![CI](https://github.com/k-ishan-9/online-blog-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/k-ishan-9/online-blog-platform/actions/workflows/ci.yml)
+
+Blogify is a multi-author publishing platform built on the MERN stack. Writers draft in a rich-text editor that auto-saves, publish to a public feed with full-text search, and track their views. Admins get analytics, moderation and an audit trail. Security is layered: validated input, sanitized HTML, JWT in httpOnly cookies, ownership-scoped queries, roles, rate limits and a Content-Security-Policy. The API is covered by 30 automated tests that run in CI against a real MongoDB.
 
 **Author:** Kishan Achanta ([GitHub](https://github.com/k-ishan-9))
 
 ---
 
-## Tech Stack
-
-- **Frontend:** React (Vite), React-Quill, Axios, Tailwind CSS
-- **Backend:** Node.js, Express 5, MongoDB, Mongoose
-- **Security:** JWT in httpOnly cookies, bcrypt password hashing, role-based access control
-
----
-
 ## Features
 
-- **Rich blog editor:** title, rich-text content and comma-separated tags.
-- **Drafts and publishing:** save work as a draft or publish when ready.
-- **Auto-save with debouncing:** saves 5 seconds after you stop typing, plus a 30-second safety net while there are unsaved changes.
-- **Multi-author ownership:** every post belongs to its author. Authors only ever see and change their own posts.
-- **Role-based access:** `author` and `admin` roles. Admins get an Admin Panel to view and remove any post.
-- **Blog management:** view, edit and delete drafts and published posts.
-- **Notifications:** instant feedback on auto-save, save and publish.
-- **Responsive UI** built with Tailwind CSS.
+**Readers (no account needed)**
+- Public feed of published posts, newest first, with "Load more" (cursor pagination)
+- Full-text search across titles, tags and content (weighted MongoDB text index), debounced as you type
+- Tag filters with live counts, shareable URLs (`/?q=react&tag=webdev`, `/post/<slug>`)
+- Post pages with author name, reading time and a view counter. Author emails are never exposed.
+
+**Writers**
+- Rich-text editor (React-Quill) with live word count and reading time
+- Auto-save for drafts: 5 seconds after you stop typing, plus a 30-second safety net
+- Publish, update a live post, or unpublish. Each post keeps one stable URL.
+- Dashboard with drafts, published posts and total views
+
+**Admins**
+- Analytics: users, posts, views, posts this week, top authors (MongoDB aggregation pipelines)
+- Moderation: view and delete any post
+- Audit log: failed logins, signups, first publishes, admin deletions and role changes
+
+**Engineering**
+- 30 API tests (Node test runner + Supertest) against a real MongoDB, run on every push by GitHub Actions
+- Docker: multi-stage image plus `docker compose` with MongoDB
+- Code-split frontend: the editor and admin bundles load only when needed
 
 ---
 
-## Access Control
+## Architecture
 
-| Action | Author | Admin |
+```mermaid
+flowchart TD
+    B["Browser: React SPA<br/>React Router, Axios, DOMPurify"] -->|"/api/* with httpOnly JWT cookie"| E
+    subgraph E["Express 5 server"]
+        M["helmet CSP, CORS whitelist, rate limits,<br/>same-origin check, JSON size limit"]
+        M --> PUB["/api/public<br/>feed, search, tags, post by slug"]
+        M --> AUTH["/api/auth<br/>Zod validation, bcrypt, JWT"]
+        M --> BLOG["/api/blogs<br/>authMiddleware, owner-scoped queries"]
+        M --> ADM["/api/admin<br/>authMiddleware + requireRole('admin')"]
+    end
+    PUB --> DB[("MongoDB<br/>users, blogs, auditlogs")]
+    AUTH --> DB
+    BLOG --> DB
+    ADM --> DB
+```
+
+---
+
+## Security
+
+| Threat | Defence | Where |
 | --- | --- | --- |
-| Create, edit, publish, delete **own** posts | Yes | Yes |
-| Read or change **another author's** post through the normal routes | No (404) | No (404) |
-| See every post with its author (Admin Panel) | No (403) | Yes |
-| Delete any post (moderation) | No (403) | Yes |
-
-How it's enforced on the server:
-
-- **Authentication:** `authMiddleware` verifies the JWT from the httpOnly cookie and sets `req.user = { id, email, role }`. No valid token means 401.
-- **Ownership:** every author query filters on `author: req.user.id`, for example `Blog.findOneAndDelete({ _id, author: req.user.id })`. Another author's post returns 404, so post ids can't be probed.
-- **Roles:** the `requireRole('admin')` middleware guards `/api/blogs/admin/*` and returns 403 for any other role.
-
-The UI hides the Admin Panel button from authors, but the server is the real gatekeeper.
+| Stolen passwords | bcrypt (cost 10, per-user salt), 8–72 character rule | `routes/auth.js`, `validation/schemas.js` |
+| Token theft by XSS | JWT in an httpOnly, SameSite=Lax cookie (Secure in production) | `config/settings.js` |
+| Stored XSS | Server-side HTML allowlist (sanitize-html), DOMPurify in the browser, Content-Security-Policy | `utils/content.js`, `PostPage.jsx`, `app.js` |
+| Accessing others' data (IDOR) | Every author query filters on `author: req.user.id`; others' posts return 404 | `routes/blogs.js` |
+| Privilege escalation | `requireRole('admin')` on the whole admin router; promotion only via CLI | `routes/admin.js`, `scripts/makeAdmin.js` |
+| Brute-force login | Rate limit: 10 failed attempts / 15 min / IP; failures logged | `app.js`, `utils/audit.js` |
+| User enumeration | Same message and same timing for "no such email" and "wrong password" | `routes/auth.js` |
+| NoSQL injection | Zod rejects non-string fields, for example `{"$ne": null}` | `middleware/validate.js` |
+| CSRF | SameSite=Lax cookie + Origin check on state-changing requests | `middleware/sameOrigin.js` |
+| Lost updates | Optimistic concurrency (`VersionError` → 409) | `models/Blog.js` |
 
 ---
 
@@ -50,101 +75,73 @@ The UI hides the Admin Panel button from authors, but the server is the real gat
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) 18 or newer (LTS recommended)
-- A MongoDB connection string: a free [MongoDB Atlas](https://www.mongodb.com/atlas) cluster, or a local MongoDB server (`mongodb://127.0.0.1:27017/blogify`)
+- [Node.js](https://nodejs.org/) 20 or newer
+- MongoDB: a local server (`mongodb://127.0.0.1:27017/blogify`) or a free [MongoDB Atlas](https://www.mongodb.com/atlas) cluster
 
-### 1. Clone the repository
+### Run it
 
 ```bash
 git clone https://github.com/k-ishan-9/online-blog-platform.git
 cd online-blog-platform/blogger
+cp .env.example .env      # then edit MONGO_URI and JWT_SECRET
+npm run build             # installs packages and builds the React app
+npm start                 # http://localhost:5000
 ```
 
-### 2. Create a `.env` file in the `blogger/` folder (next to `package.json`)
+**Development with hot reload (two terminals):** `npm run dev` in `blogger/`, and `npm run dev` in `blogger/frontend/`. Then open http://localhost:5173. Vite proxies `/api` to port 5000.
 
-```env
-MONGO_URI=your_mongodb_connection_string
-JWT_SECRET=any_long_random_string
-JWT_EXPIRATION=1h
-PORT=5000
-```
+**Docker:** `docker compose up --build`, then open http://localhost:5000. This starts MongoDB too.
 
-### 3. Run it
+**Windows one-click:** double-click `start-blogify.bat` if it is present in `blogger/`.
 
-**Option A: single server (simplest)**
+### Make an admin
+
+Sign up in the app, then run `npm run make-admin -- you@example.com` and log in again.
+
+### Run the tests
 
 ```bash
-npm run build     # installs backend + frontend packages and builds the React app
-npm start         # Express serves the API and the built frontend
+npm test   # needs MongoDB; uses MONGO_URI_TEST, default mongodb://127.0.0.1:27017/blogify_test
 ```
 
-Open http://localhost:5000
-
-**Option B: development mode with hot reload (two terminals)**
-
-```bash
-# terminal 1, in blogger/
-npm install
-npm run dev
-
-# terminal 2
-cd frontend
-npm install
-npm run dev
-```
-
-Open http://localhost:5173. Vite forwards `/api` requests to the Express server on port 5000.
-
-### 4. Make an admin (optional)
-
-Sign up in the app first, then run:
-
-```bash
-npm run make-admin -- you@example.com
-```
-
-Log out and log back in so the new role is included in your token.
-
-> Upgrading an older database? Posts created before ownership was added have no author, so they appear only in the Admin Panel.
+The suite refuses to run against a database whose name doesn't end in `_test`, so it can't wipe real data.
 
 ---
 
-## Usage
+## API overview
 
-1. **Sign up and log in.**
-2. **Write:** add a title, content and tags. Drafts auto-save as you type.
-3. **Publish** when ready.
-4. **View Blogs:** see your drafts and published posts, then edit, view or delete them.
-5. **Admins:** open **Admin Panel** to see every author's posts and remove any of them.
+| Area | Endpoints |
+| --- | --- |
+| Health | `GET /api/health` |
+| Auth | `POST /api/auth/signup`, `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout` |
+| Public | `GET /api/public/blogs?q=&tag=&cursor=&limit=`, `GET /api/public/blogs/:slug`, `GET /api/public/tags` |
+| Author | `GET /api/blogs`, `GET /api/blogs/stats`, `POST /api/blogs/save-draft`, `POST /api/blogs/publish`, `GET /api/blogs/:id`, `DELETE /api/blogs/:id` |
+| Admin | `GET /api/admin/blogs`, `DELETE /api/admin/blogs/:id`, `GET /api/admin/stats`, `GET /api/admin/audit` |
+
+Full details: [`backend/API_DOC.md`](backend/API_DOC.md).
 
 ---
 
 ## Project Structure
 
 ```
+.github/workflows/ci.yml     tests + lint + build on every push
 blogger/
-  package.json          backend scripts (start, dev, build, make-admin)
-  .env                  your local settings (not committed)
   backend/
-    server.js           Express app; serves the API and frontend/dist
-    config/db.js        MongoDB connection
-    models/             User (email, password hash, role), Blog (author, status, ...)
-    middleware/         auth.js (JWT check), requireRole.js (role check)
-    routes/             auth.js, blogs.js
-    scripts/            makeAdmin.js
-    API_DOC.md
-  frontend/
-    vite.config.js      dev proxy for /api
-    src/
-      components/       BlogEditor, BlogList, DisplayBlog, AdminPanel, Login, Signup, Notification
-      hooks/            useDebounce.js
-      services/api.js   Axios calls
-    DOC.md
+    app.js                   Express app (middleware, routes, error handler)
+    server.js                connects to MongoDB and starts the app
+    config/                  db.js, settings.js (cookies, origins)
+    middleware/              auth, requireRole, validate (Zod), sameOrigin, errorHandler
+    models/                  User, Blog (indexes, optimistic concurrency), AuditLog
+    routes/                  auth, blogs (author), public, admin
+    utils/                   content.js (sanitize, slug, excerpt), audit.js
+    validation/schemas.js    Zod schemas
+    scripts/makeAdmin.js
+    tests/api.test.js        30 API tests
+  frontend/src/
+    pages/                   Feed, Post, Login, Signup, Dashboard, Admin, NotFound
+    components/              Navbar, ProtectedRoute, BlogEditor, BlogList, PostCard, DisplayBlog, Notification
+    context/, hooks/         AuthProvider, useAuth, useDebounce
+    services/api.js          all HTTP calls
+  Dockerfile, docker-compose.yml, .env.example
 ```
-
----
-
-## Documentation
-
-- **Backend API:** `backend/API_DOC.md`
-- **Frontend:** `frontend/DOC.md`
