@@ -92,8 +92,6 @@ npm start                 # http://localhost:5000
 
 **Docker:** `docker compose up --build`, then open http://localhost:5000. This starts MongoDB too.
 
-**Windows one-click:** double-click `start-blogify.bat` if it is present in `blogger/`.
-
 ### Upgrading an existing database
 
 Run `npm run migrate` once. It converts posts saved by older versions (tags, slugs, excerpts, publish dates) and creates the new indexes. It is safe to run more than once.
