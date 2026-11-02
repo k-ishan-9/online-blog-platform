@@ -4,10 +4,12 @@ import BlogList from './components/BlogList';
 import Login from './components/Login';
 import Signup from './components/Signup';
 import DisplayBlog from './components/DisplayBlog';
+import AdminPanel from './components/AdminPanel';
 import { authCheckOnMount, getBlogs, logout } from './services/api';
 
 function App() {
     const [loggedIn, setLoggedIn] = useState(false);
+    const [user, setUser] = useState(null); // { id, email, role } from the JWT
     const [blogs, setBlogs] = useState({ drafts: [], published: [] });
     const [view, setView] = useState('editor');
     const [editBlog, setEditBlog] = useState(null);
@@ -16,14 +18,29 @@ function App() {
     const customStyle = " flex flex-col justify-center";
     const appStyle = "min-h-screen bg-gradient-to-br from-blue-100 via-white to-blue-100" + (!loggedIn || showBlog != null ? customStyle : "");
 
+    // On first load, restore the session if the JWT cookie is still valid
     useEffect(() => {
-        if (loggedIn) fetchBlogs();
+        authCheckOnMount().then(currentUser => {
+            setUser(currentUser);
+            setLoggedIn(Boolean(currentUser));
+        });
+    }, []);
+
+    // After login, load the user's identity and their own posts
+    useEffect(() => {
+        if (!loggedIn) return;
+        authCheckOnMount().then(setUser);
+        fetchBlogs();
     }, [loggedIn]);
 
-    useEffect(() => {
-    // Check if user is authenticated on mount
-    setLoggedIn(authCheckOnMount());
-}, []);
+    const resetSession = () => {
+        setLoggedIn(false);
+        setUser(null);
+        setBlogs({ drafts: [], published: [] });
+        setEditBlog(null);
+        setShowBlog(null);
+        setView('editor');
+    };
 
     const fetchBlogs = async () => {
         try {
@@ -32,8 +49,8 @@ function App() {
                 drafts: data.filter(blog => blog.status === 'draft'),
                 published: data.filter(blog => blog.status === 'published')
             });
-        } catch (error) {
-            setLoggedIn(false);
+        } catch {
+            resetSession(); // 401: session expired or invalid
         }
     };
 
@@ -41,11 +58,13 @@ function App() {
         if(!window.confirm('Are you sure you want to logout?')) return;
         try {
             await logout();
-            setLoggedIn(false);
+            resetSession();
         } catch (error) {
             console.error('Logout failed:', error);
         }
     };
+
+    const isAdmin = user?.role === 'admin';
 
     return (
         <div className={appStyle}>
@@ -59,13 +78,33 @@ function App() {
                 <DisplayBlog blog={showBlog} onBack={() => setShowBlog(null)} />
             ) : (
                 <>
-                    <div className="flex justify-end p-4">
-                        <button
-                            onClick={handleLogout}
-                            className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-700"
-                        >
-                            Logout
-                        </button>
+                    <div className="flex justify-between items-center p-4">
+                        <div className="text-gray-700">
+                            {user && (
+                                <>
+                                    Signed in as <span className="font-semibold">{user.email}</span>
+                                    <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-bold ${isAdmin ? 'bg-purple-200 text-purple-800' : 'bg-blue-200 text-blue-800'}`}>
+                                        {user.role || 'author'}
+                                    </span>
+                                </>
+                            )}
+                        </div>
+                        <div className="flex gap-2">
+                            {isAdmin && (
+                                <button
+                                    onClick={() => setView('admin')}
+                                    className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-800"
+                                >
+                                    Admin Panel
+                                </button>
+                            )}
+                            <button
+                                onClick={handleLogout}
+                                className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-700"
+                            >
+                                Logout
+                            </button>
+                        </div>
                     </div>
                     {view === 'editor' ? (
                         <BlogEditor
@@ -74,6 +113,8 @@ function App() {
                             editBlog={editBlog}
                             setEditBlog={setEditBlog}
                         />
+                    ) : view === 'admin' && isAdmin ? (
+                        <AdminPanel setView={setView} />
                     ) : (
                         <BlogList
                             blogs={blogs}

@@ -14,7 +14,8 @@ src/
     BlogList.jsx
     Login.jsx
     Signup.jsx
-    ShowBlog.jsx
+    DisplayBlog.jsx
+    AdminPanel.jsx
     Notification.jsx
   hooks/
     useDebounce.js
@@ -50,8 +51,13 @@ src/
 - Displays user's drafts and published blogs.
 - Allows editing or viewing individual blogs.
 
-### `ShowBlog.jsx`
+### `DisplayBlog.jsx`
 - Shows a single blog post in detail.
+
+### `AdminPanel.jsx`
+- Shown only to users with the `admin` role.
+- Lists every author's posts with the author's email and lets the admin delete any post.
+- The server enforces the role (`403` otherwise). Hiding the button is only a convenience.
 
 ### `Notification.jsx`
 - Displays temporary notification messages.
@@ -89,7 +95,7 @@ src/
 
 ## Environment Variables
 
-- `.env` file contains `VITE_API_URL` for backend API base URL.
+- None needed. The app calls the relative path `/api`. In production Express serves the built app on the same origin. In development, `vite.config.js` proxies `/api` to `http://localhost:5000`.
 
 ---
 

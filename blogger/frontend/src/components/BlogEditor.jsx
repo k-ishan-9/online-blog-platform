@@ -1,23 +1,33 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import { saveDraft, publishBlog } from '../services/api';
 import Notification from './Notification';
 import useDebounce from '../hooks/useDebounce';
 
-function BlogEditor({ token, setView, fetchBlogs, editBlog }) {
-    const [currentBlog, setCurrentBlog] = useState(editBlog || { id: '', title: '', content: '', tags: '', status: 'draft' });
-    const [notification, setNotification] = useState({message: '', sign: '' });
-    const [autoSaveTimer, setAutoSaveTimer] = useState(null);
+const EMPTY_BLOG = { id: '', title: '', content: '', tags: '', status: 'draft' };
 
-    // Auto-save every 30 seconds
+// Pull the server's error message out of an Axios error when there is one
+const errorText = (err) => err.response?.data?.message || err.message;
+
+function BlogEditor({ setView, fetchBlogs, editBlog }) {
+    const [currentBlog, setCurrentBlog] = useState(editBlog || EMPTY_BLOG);
+    const [notification, setNotification] = useState({message: '', sign: '' });
+    const latestBlogRef = useRef(currentBlog); // newest editor content, readable from timers
+    const dirtyRef = useRef(false);            // true while there are unsaved changes
+
     useEffect(() => {
-        if (!token) return;
+        latestBlogRef.current = currentBlog;
+    }, [currentBlog]);
+
+    // Safety net: every 30 seconds, save if there are unsaved changes
+    useEffect(() => {
         const interval = setInterval(() => {
-            handleAutoSave();
+            if (dirtyRef.current) handleAutoSave(latestBlogRef.current);
         }, 30000);
         return () => clearInterval(interval);
-    });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // Debounced auto-save after 5s inactivity
     const debouncedSave = useDebounce(async (blogData) => {
@@ -28,43 +38,57 @@ function BlogEditor({ token, setView, fetchBlogs, editBlog }) {
         setCurrentBlog(prev => {
             const updated = { ...prev, [field]: value };
             if (field === 'title' || field === 'content' || field === 'tags') {
+                dirtyRef.current = true;
                 debouncedSave(updated);
             }
             return updated;
         });
     }, [debouncedSave]);
 
+    // Keep what the user has typed since the request was sent; only adopt the
+    // server's id, so later saves update the same post instead of creating duplicates
+    const adoptSavedId = (saved) => {
+        setCurrentBlog(prev => ({ ...prev, _id: saved._id }));
+    };
+
     const handleAutoSave = async (blogData = currentBlog) => {
         if (!blogData.title && !blogData.content) return;
+        dirtyRef.current = false;
         try {
-            const response = await saveDraft(blogData, token);
+            const response = await saveDraft(blogData);
             setNotification({message: 'Draft auto-saved!', sign: '+' });
-            setCurrentBlog(response);
+            adoptSavedId(response);
             fetchBlogs();
         } catch (err) {
-            setNotification({ message: 'Auto-save failed! ' + err.message, sign: '-' });
+            dirtyRef.current = true;
+            setNotification({ message: 'Auto-save failed! ' + errorText(err), sign: '-' });
         }
     };
 
     const handleSaveDraft = async () => {
+        debouncedSave.cancel(); // a manual save replaces any pending auto-save
+        dirtyRef.current = false;
         try {
-            const response = await saveDraft(currentBlog, token);
+            const response = await saveDraft(currentBlog);
             setNotification({message: 'Draft saved!', sign: '+' });
-            setCurrentBlog(response);
+            adoptSavedId(response);
             fetchBlogs();
         } catch (err) {
-            setNotification({ message: 'Error saving draft! ' + err.message, sign: '-' });
+            dirtyRef.current = true;
+            setNotification({ message: 'Error saving draft! ' + errorText(err), sign: '-' });
         }
     };
 
     const handlePublish = async () => {
+        debouncedSave.cancel(); // stop a pending auto-save from turning it back into a draft
         try {
-            await publishBlog({ ...currentBlog, status: 'published' }, token);
+            await publishBlog({ ...currentBlog, status: 'published' });
+            dirtyRef.current = false;
             setNotification({message: 'Blog published!', sign: '+' });
-            setCurrentBlog({ id: '', title: '', content: '', tags: '', status: 'draft' });
+            setCurrentBlog(EMPTY_BLOG);
             fetchBlogs();
         } catch (error) {
-            setNotification({ message: 'Error publishing blog!' + error.message, sign: '-' });
+            setNotification({ message: 'Error publishing blog! ' + errorText(error), sign: '-' });
         }
     };
 

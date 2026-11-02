@@ -1,12 +1,18 @@
 {
-    "author": "Vitesh Reddy",
     "name": "blogify-backend",
-    "version": "1.0.0",
+    "version": "1.1.0",
+    "description": "Blogify: a MERN blog editor with debounced auto-save, JWT auth and role-based access control",
+    "author": "Kishan Achanta",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/k-ishan-9/online-blog-platform.git"
+    },
     "type": "module",
     "scripts": {
         "start": "node backend/server.js",
-        "dev": "nodemon server.js",
-        "build": "npm i && npm i --prefix frontend && npm run build --prefix frontend"
+        "dev": "nodemon backend/server.js",
+        "build": "npm i && npm i --prefix frontend && npm run build --prefix frontend",
+        "make-admin": "node backend/scripts/makeAdmin.js"
     },
     "dependencies": {
         "bcrypt": "^6.0.0",

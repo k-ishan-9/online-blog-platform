@@ -5,11 +5,15 @@ const axiosInstance = axios.create({
     withCredentials: true
 });
 
+// Returns the logged-in user ({ id, email, role }) or null if there is no valid session
 export const authCheckOnMount = async () => {
-    return await axiosInstance.get('/auth/me')
-    .then(true)
-    .catch(false);
-}
+    try {
+        const response = await axiosInstance.get('/auth/me');
+        return response.data.user;
+    } catch {
+        return null;
+    }
+};
 
 export const login = async (credentials) => {
     const response = await axiosInstance.post('/auth/login', credentials);
@@ -58,5 +62,16 @@ export const getBlog = async (id) => {
 
 export const deleteBlog = async (id) => {
     const response = await axiosInstance.delete(`/blogs/${id}`);
+    return response.data;
+};
+
+// Admin only: the server answers 403 for any other role
+export const getAllBlogsAdmin = async () => {
+    const response = await axiosInstance.get('/blogs/admin/all');
+    return response.data;
+};
+
+export const adminDeleteBlog = async (id) => {
+    const response = await axiosInstance.delete(`/blogs/admin/${id}`);
     return response.data;
 };
