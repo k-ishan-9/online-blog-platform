@@ -94,6 +94,10 @@ npm start                 # http://localhost:5000
 
 **Windows one-click:** double-click `start-blogify.bat` if it is present in `blogger/`.
 
+### Upgrading an existing database
+
+Run `npm run migrate` once. It converts posts saved by older versions (tags, slugs, excerpts, publish dates) and creates the new indexes. It is safe to run more than once.
+
 ### Make an admin
 
 Sign up in the app, then run `npm run make-admin -- you@example.com` and log in again.
@@ -136,7 +140,7 @@ blogger/
     routes/                  auth, blogs (author), public, admin
     utils/                   content.js (sanitize, slug, excerpt), audit.js
     validation/schemas.js    Zod schemas
-    scripts/makeAdmin.js
+    scripts/                 makeAdmin.js, migrate.js
     tests/api.test.js        30 API tests
   frontend/src/
     pages/                   Feed, Post, Login, Signup, Dashboard, Admin, NotFound

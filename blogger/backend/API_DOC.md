@@ -80,4 +80,5 @@ Indexes: `{ author, updated_at }` for the dashboard, `{ status, publishedAt, _id
 ## Scripts
 
 - `npm run make-admin -- <email>`: promotes a user to admin and records it in the audit log
+- `npm run migrate`: upgrades posts saved by older versions; safe to re-run
 - `npm test`: runs the API test suite against `MONGO_URI_TEST`
