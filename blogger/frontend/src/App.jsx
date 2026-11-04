@@ -1,90 +1,49 @@
-import { useState, useEffect } from 'react';
-import BlogEditor from './components/BlogEditor';
-import BlogList from './components/BlogList';
-import Login from './components/Login';
-import Signup from './components/Signup';
-import DisplayBlog from './components/DisplayBlog';
-import { authCheckOnMount, getBlogs, logout } from './services/api';
+import { lazy, Suspense } from 'react';
+import { Routes, Route } from 'react-router-dom';
+import Navbar from './components/Navbar';
+import ProtectedRoute from './components/ProtectedRoute';
+import FeedPage from './pages/FeedPage';
+import PostPage from './pages/PostPage';
+import LoginPage from './pages/LoginPage';
+import SignupPage from './pages/SignupPage';
+import NotFoundPage from './pages/NotFoundPage';
+
+// Code splitting: the dashboard (with the heavy rich-text editor) and the admin console
+// are separate bundles, so readers of the public feed never download them.
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const AdminPage = lazy(() => import('./pages/AdminPage'));
 
 function App() {
-    const [loggedIn, setLoggedIn] = useState(false);
-    const [blogs, setBlogs] = useState({ drafts: [], published: [] });
-    const [view, setView] = useState('editor');
-    const [editBlog, setEditBlog] = useState(null);
-    const [showLogin, setShowLogin] = useState(true);
-    const [showBlog, setShowBlog] = useState(null);
-    const customStyle = " flex flex-col justify-center";
-    const appStyle = "min-h-screen bg-gradient-to-br from-blue-100 via-white to-blue-100" + (!loggedIn || showBlog != null ? customStyle : "");
-
-    useEffect(() => {
-        if (loggedIn) fetchBlogs();
-    }, [loggedIn]);
-
-    useEffect(() => {
-    // Check if user is authenticated on mount
-    setLoggedIn(authCheckOnMount());
-}, []);
-
-    const fetchBlogs = async () => {
-        try {
-            const data = await getBlogs();
-            setBlogs({
-                drafts: data.filter(blog => blog.status === 'draft'),
-                published: data.filter(blog => blog.status === 'published')
-            });
-        } catch (error) {
-            setLoggedIn(false);
-        }
-    };
-
-    const handleLogout = async () => {
-        if(!window.confirm('Are you sure you want to logout?')) return;
-        try {
-            await logout();
-            setLoggedIn(false);
-        } catch (error) {
-            console.error('Logout failed:', error);
-        }
-    };
-
     return (
-        <div className={appStyle}>
-            {!loggedIn ? (
-                showLogin ? (
-                    <Login setLoggedIn={setLoggedIn} setShowLogin={setShowLogin} />
-                ) : (
-                    <Signup setShowLogin={setShowLogin} />
-                )
-            ) : showBlog ? (
-                <DisplayBlog blog={showBlog} onBack={() => setShowBlog(null)} />
-            ) : (
-                <>
-                    <div className="flex justify-end p-4">
-                        <button
-                            onClick={handleLogout}
-                            className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-700"
-                        >
-                            Logout
-                        </button>
-                    </div>
-                    {view === 'editor' ? (
-                        <BlogEditor
-                            setView={setView}
-                            fetchBlogs={fetchBlogs}
-                            editBlog={editBlog}
-                            setEditBlog={setEditBlog}
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50">
+            <Navbar />
+            <main className="max-w-6xl mx-auto px-4 py-8">
+                <Suspense fallback={<p className="text-center text-gray-500 mt-20">Loading…</p>}>
+                    <Routes>
+                        <Route path="/" element={<FeedPage />} />
+                        <Route path="/post/:slug" element={<PostPage />} />
+                        <Route path="/login" element={<LoginPage />} />
+                        <Route path="/signup" element={<SignupPage />} />
+                        <Route
+                            path="/dashboard"
+                            element={
+                                <ProtectedRoute>
+                                    <DashboardPage />
+                                </ProtectedRoute>
+                            }
                         />
-                    ) : (
-                        <BlogList
-                            blogs={blogs}
-                            setView={setView}
-                            fetchBlogs={fetchBlogs}
-                            setEditBlog={setEditBlog}
-                            setShowBlog={setShowBlog}
+                        <Route
+                            path="/admin"
+                            element={
+                                <ProtectedRoute role="admin">
+                                    <AdminPage />
+                                </ProtectedRoute>
+                            }
                         />
-                    )}
-                </>
-            )}
+                        <Route path="*" element={<NotFoundPage />} />
+                    </Routes>
+                </Suspense>
+            </main>
         </div>
     );
 }

@@ -1,62 +1,52 @@
 import axios from 'axios';
+import { tagsToText } from '../utils/format';
 
-const axiosInstance = axios.create({
-    baseURL: '/api',
-    withCredentials: true
+// Relative base URL: Express serves the app in production, and Vite proxies /api in development.
+// withCredentials sends the httpOnly JWT cookie with every request.
+const api = axios.create({ baseURL: '/api', withCredentials: true });
+
+const data = (request) => request.then((response) => response.data);
+
+// ---------- Auth ----------
+
+// The logged-in user ({ id, email, name, role }) or null if there is no valid session
+export const getCurrentUser = async () => {
+    try {
+        return (await api.get('/auth/me')).data.user;
+    } catch {
+        return null;
+    }
+};
+export const login = (credentials) => data(api.post('/auth/login', credentials));
+export const signup = (details) => data(api.post('/auth/signup', details));
+export const logout = () => data(api.post('/auth/logout'));
+
+// ---------- Author (your own posts) ----------
+
+// Only the fields the API accepts; _id only when the post already exists
+const toPayload = (blog) => ({
+    ...(blog._id ? { _id: blog._id } : {}),
+    title: blog.title,
+    content: blog.content,
+    tags: tagsToText(blog.tags),
 });
 
-export const authCheckOnMount = async () => {
-    return await axiosInstance.get('/auth/me')
-    .then(true)
-    .catch(false);
-}
+export const saveDraft = (blog) => data(api.post('/blogs/save-draft', toPayload(blog)));
+export const publishBlog = (blog) => data(api.post('/blogs/publish', toPayload(blog)));
+export const getMyBlogs = () => data(api.get('/blogs'));
+export const getMyStats = () => data(api.get('/blogs/stats'));
+export const getBlog = (id) => data(api.get(`/blogs/${id}`));
+export const deleteBlog = (id) => data(api.delete(`/blogs/${id}`));
 
-export const login = async (credentials) => {
-    const response = await axiosInstance.post('/auth/login', credentials);
-    return response.data;
-};
+// ---------- Public (no login needed) ----------
 
-export const signup = async (credentials) => {
-    const response = await axiosInstance.post('/auth/signup', credentials);
-    return response.data;
-};
+export const getFeed = (params) => data(api.get('/public/blogs', { params }));
+export const getTopTags = () => data(api.get('/public/tags'));
+export const getPublicPost = (slug) => data(api.get(`/public/blogs/${encodeURIComponent(slug)}`));
 
-export const logout = async () => {
-    const response = await axiosInstance.post('/auth/logout');
-    return response.data;
-};
+// ---------- Admin (the server answers 403 for any other role) ----------
 
-export const saveDraft = async (blogData) => {
-    const payload = { ...blogData };
-    if (payload.id) {
-        payload._id = payload.id;
-        delete payload.id;
-    }
-    const response = await axiosInstance.post('/blogs/save-draft', payload);
-    return response.data;
-};
-
-export const publishBlog = async (blogData) => {
-    const payload = { ...blogData };
-    if (payload.id) {
-        payload._id = payload.id;
-        delete payload.id;
-    }
-    const response = await axiosInstance.post('/blogs/publish', payload);
-    return response.data;
-};
-
-export const getBlogs = async () => {
-    const response = await axiosInstance.get('/blogs');
-    return response.data;
-};
-
-export const getBlog = async (id) => {
-    const response = await axiosInstance.get(`/blogs/${id}`);
-    return response.data;
-};
-
-export const deleteBlog = async (id) => {
-    const response = await axiosInstance.delete(`/blogs/${id}`);
-    return response.data;
-};
+export const getAllBlogsAdmin = () => data(api.get('/admin/blogs'));
+export const adminDeleteBlog = (id) => data(api.delete(`/admin/blogs/${id}`));
+export const getAdminStats = () => data(api.get('/admin/stats'));
+export const getAuditLog = () => data(api.get('/admin/audit'));
